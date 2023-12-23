@@ -156,20 +156,134 @@ extract_score <- function(url){
   )
 }
 
+### presupuesto
+
+urls <- paste0("https://www.boxofficemojo.com/release/",datos_peliculas$id)
+
+extract_director <- function(url){
+  p()
+  url_imdb <- read_html(url) |> 
+    html_element(xpath = "//div[@id = 'title-summary-refiner']//a") |>
+    html_attr("href")  |> 
+    x => glue("https://www.imdb.com{x}")
+  
+  p <- read_html(url_imdb)
+  id <- str_extract(url, "rl\\d+")
+  presupuesto <- p |> 
+    html_elements(xpath = "//li[@data-testid = 'title-boxoffice-budget']//span") |> 
+    html_text2() |> 
+    keep_at(2) 
+  
+  tibble(id, presupuesto)
+}
+
+extract_director <- possibly(extract_director)
+
+with_progress({
+  p <- progressr::progressor(along = urls)
+  df <- future_lapply(urls, extract_director)
+})
+
+df <- list_rbind(df)
+
+df <- df |> 
+  mutate(
+    unit = str_trim(str_extract(presupuesto, "^\\D+")),
+    presupuesto = parse_number(presupuesto),
+    presupuesto = presupuesto * conversion_rates_to_usd[unit]
+  ) |> 
+  select(id,presupuesto)
+
+df <- datos_peliculas |> 
+  select(-presupuesto) |> 
+  left_join(df) |> 
+  filter(!duplicated(id))
+
+df <-  df |> 
+  relocate(
+    presupuesto,
+    .after = ingresos_extrajero
+  )
+glimpse(df)
+
+write_rds(df, "datos_peliculas.rds")
+  
+df |> 
+  select(
+    id, pelicula,
+    genero,
+    ingresos, domestico, internacional,
+    presupuesto,
+    n_cines, dias_en_cine,
+    duracion,
+    edad, 
+    calificacion,
+    votos,
+    popularidad,
+    productora,
+    director,
+    fecha_estreno
+  ) 
+
+datos_peliculas|> 
+  filter(
+    !str_detect(pelicula, "Release|Edition|Anniversary"),
+    !presupuesto < 10000
+  ) |> 
+  write_rds("datos/datos_peliculas.rds")
 extract_score <- possibly(extract_score)
 
 with_progress({
   p <- progressr::progressor(along = urls)
   df <- future_lapply(urls, extract_score)
 })
+conversion_rates_to_usd <- c(
+  "$"   = 1,        # Dólar estadounidense a USD
+  "£"   = 1.22,     # Libras esterlinas a USD
+  "CA$" = 0.75,     # Dólares canadienses a USD
+  "A$"  = 0.71,     # Dólares australianos a USD
+  "NOK" = 0.10,     # Coronas noruegas a USD
+  "FRF" = 0.15,     # Francos franceses a USD (moneda histórica)
+  "IEP" = 1.28,     # Libras irlandesas a USD (moneda histórica)
+  "DKK" = 0.14,     # Coronas danesas a USD
+  "CHF" = 1.05,     # Francos suizos a USD
+  "HK$" = 0.13,     # Dólares de Hong Kong a USD
+  "DEM" = 0.51,     # Marcos alemanes a USD (moneda histórica)
+  "¥"   = 0.0077,   # Yenes japoneses a USD
+  "₹"   = 0.013,    # Rupias indias a USD
+  "€"   = 1.05,     # Euros a USD
+  "R$"  = 0.19,     # Reales brasileños a USD
+  "CN¥" = 0.15,     # Yuanes chinos a USD
+  "THB" = 0.03,     # Baht tailandés a USD
+  "₩"   = 0.00083   # Won surcoreano a USD
+)
 
 df <- list_rbind(df)
 
+df |> 
+  
+units <- c("K" = 1000, "M" = 1000000)
+
+df <- df |> 
+  mutate(
+    .unit = str_extract(votes, "\\D$"),
+    .v2 = parse_number(votes),
+    .v3 = .v2 * units[.unit],
+    votes = if_else(is.na(.v3),.v2,.v3)
+  ) |> 
+  select(id,votos = votes)
+
 x <- left_join(
-  datos_peliculas,
+  datos_peliculas |> 
+    select(-votos),
   df
 )
 
+x <- x |> 
+  relocate(
+    votos, 
+    .after = calificacion
+  )
 x |> 
   rename(
     calificacion = score,
@@ -200,5 +314,9 @@ x |>
       true = "desconocido",
       edad
     )
-  ) |> 
-  write_rds("datos_peliculas.rds")
+  )
+
+
+  x |>
+    filter(!str_detect(pelicula,"Re-release")) |> 
+    write_rds("datos_peliculas.rds")
