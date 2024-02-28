@@ -2,7 +2,7 @@ library(tidyverse)
 library(httr2)
 library(glue)
 
-api_key <- "BQAc0UejR4SWkeDK1PZEeXp3fOx85vlxiJaeL_87d7g5WMeU4QC-ndGwW-6uBcRhZzESC3-qG8BvTX-athLfeYpQeFaW0ESHhF4gei_gScxN0vWYYU8"
+api_key <- "BQDbkDWbx7MpwZhi6Gx-sSbl0mq5hPLBlmECc68b1fx7FaFcQZlgQc2Klz2zm-9p51mGOCDXjOXd5xSGpNnC3n1QiVoxoQ-MoDZDEBJV0ycrv5odVE0"
 
 playlist <- c(
   "canada" = "37i9dQZEVXbKj23U1GF4IR",
@@ -47,6 +47,8 @@ get_playlist <- function(playlist){
     tibble(
       pais = str_remove(x$name,"Top 50 - "),
       album = track$track$album$name,
+      fecha_lanzamiento_album = track$track$album$release_date,
+      cantidad_canciones_album = track$track$album$total_tracks,
       id_album = track$track$album$id,
       cancion = track$track$name,
       artista = map_chr(track$track$artists,~.x$name),
@@ -90,40 +92,19 @@ df <- map(playlist, get_playlist)
 
 df <- list_rbind(df)
 
-df <- df |> 
-  mutate(
-    pais = str_remove(pais, "Top 50 ")
-  ) |> 
+cancion <- df |> 
   select(
-    posicion:tempo
-  ) |> 
-  relocate(
-    contains("id"),
-    .before = 1
-  ) 
-pais <- c("Spain","Usa")
+    id,
+    titulo = cancion,
+    id_album
+  )
 
-
-x <- map(pais, function(p){
+df |> 
   select(
-    df,
-    posicion ,pais, cancion, artista
-  ) |> 
-    filter(
-      pais %in% p,
-      !duplicated(cancion),
-      .by = pais
-    ) |> 
-    rename_with(.fn = \(x) paste(p,"_",x)) |> 
-    select(!contains("pais"))
-}) |> 
-  list_cbind(name_repair = "unique") 
-
-
-
-
-
-
+    id = id_album,
+    nombre = album,
+    id_
+  )
 
 
 
